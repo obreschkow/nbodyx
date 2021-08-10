@@ -1,0 +1,40 @@
+# Paths
+inputfile   ics.txt
+outputpath  output
+
+# Snapshot format
+# 1 : ascii
+# 2 : binary
+# 3 : single binary stream containing all snapshots
+outputformat 	1
+
+# Timing
+# Units of time are set by the units of positions an velocities in the ICs file, namely
+# [unit of time in seconds] = [unit of length in meters] / [unit of velocity in m/s]
+# e.g. for length units of of 1AU=1.49598e11m and velocity units of 1km/s=1e3m/s, one unit of time is 1.49598e8s≈4.74yrs
+tinitial       0
+tfinal         1.7e1
+dtmax       	1.15e0
+dtmin				0
+dtout				0.1
+
+# Gravitational constant
+# Units of G are set by the units of the ICs file, namely
+# [unit of G in m^3*kg^(-1)*s^(-2)] = [unit of length in meters] * [unit of velocity in m/s]^2 / [unit of mass in kg]
+# e.g. for lengths units of 1AU=1.49598e11m, velocity units of 1km/s=1e3m/s and mass units of 1Msun=1.98847e30kg, a unit of G is
+# 7.523272e-14 m^3*kg^(-1)*s^(-2). In these units the true value of G=6.67430e-11 m^3*kg^(-1)*s^(-2) has the value 887.154
+G        		1
+
+# Smoothing radius (of a uniform top-hat distribution)
+smoothing_radius 0.0
+
+# Accuracy parameter
+eta				0.02
+
+# Integration algorithm
+# 'euler' = Euler algorithm (1st order => error of order dt^2)
+# 'leapfrog' = symplectic Leapfrog algorithm (2nd order => error of order dt^3)
+# 'yoshida' or 'yoshida4' = symplectic Yoshida1990 algorithm (4th order => error of order dt^5)
+# 'yoshida6' = symplectic Yoshida1990 algorithm (6th order => error of order dt^7)
+integrator    yoshida
+
