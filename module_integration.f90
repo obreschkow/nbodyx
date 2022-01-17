@@ -12,7 +12,6 @@ module module_integration
       end subroutine
    end interface
    
-   integer,allocatable  :: set(:)   ! indices of acceleratable particles
    real*8               :: dtvar    ! suggested variable time-step
    procedure(integrator_abstract), pointer   :: integrator => NULL()
    
@@ -21,8 +20,8 @@ module module_integration
    subroutine run_simulation
    
       implicit none
-      integer  :: i,j
-      real*8   :: dt,t_next_snapshot
+      integer*8   :: i
+      real*8      :: dt,t_next_snapshot
       
       ! choose custom integrator
       select case (trim(para%integrator))
@@ -39,18 +38,6 @@ module module_integration
          case default
             call error('unknown integrator: '//trim(para%integrator))
       end select              
-      
-      ! make indices of acceleratable particles (i.e. = normal particles that are accelerated, as opposed to background particles)
-      if (allocated(set)) deallocate(set)
-      allocate(set(n-nbackground))
-      j = 0
-      do i = 1,n
-         if (p(i)%acceleratable) then
-            j = j+1
-            set(j) = i
-         end if
-      end do
-      if (j.ne.n-nbackground) call error('indexing error')
       
       ! initialise
       t = para%tinitial
@@ -70,6 +57,13 @@ module module_integration
          ! advance all variables by dt
          call integrator(dt)
          t = t+dt
+         
+         ! put particles back into periodic box
+         if (para%box_size>0) then
+            do i = 1,n
+               p(i)%x = modulo(p(i)%x,para%box_size)
+            end do
+         end if
       
          ! save snapshot, if needed
          if ((t>=t_next_snapshot).or.(t>=para%tfinal))   then
@@ -97,7 +91,7 @@ module module_integration
    
       call evaluate_accelerations
       do d = 1,3
-         p(set)%x(d) = p(set)%x(d)+p(set)%v(d)*dt+0.5*p(set)%a(d)*dt**2
+         p%x(d) = p%x(d)+p%v(d)*dt+0.5*p%a(d)*dt**2
          p(set)%v(d) = p(set)%v(d)+p(set)%a(d)*dt
       end do
    
@@ -113,7 +107,7 @@ module module_integration
       ht = 0.5*dt
       do d = 1,3
          p(set)%v(d) = p(set)%v(d)+p(set)%a(d)*ht
-         p(set)%x(d) = p(set)%x(d)+p(set)%v(d)*dt
+         p%x(d) = p%x(d)+p%v(d)*dt
       end do
       call evaluate_accelerations
       do d = 1,3
@@ -134,12 +128,12 @@ module module_integration
       real*8,parameter     :: d(3) = (/w1,w0,w1/)
       real*8,allocatable   :: dx(:,:)
       
-      allocate(dx(size(set),3))
+      allocate(dx(n,3))
       dx = 0 ! the use of dx allows to increase the numerical accuracy significantly
       
       do i = 1,3
          do dim = 1,3
-            dx(:,dim) = dx(:,dim)+c(i)*p(set)%v(dim)*dt
+            dx(:,dim) = dx(:,dim)+c(i)*p%v(dim)*dt
          end do
          call evaluate_accelerations(dx)
          do dim = 1,3
@@ -147,8 +141,8 @@ module module_integration
          end do
       end do
       do dim = 1,3
-         dx(:,dim) = dx(:,dim)+c(4)*p(set)%v(dim)*dt
-         p(set)%x(dim) = p(set)%x(dim)+dx(:,dim)
+         dx(:,dim) = dx(:,dim)+c(4)*p%v(dim)*dt
+         p%x(dim) = p%x(dim)+dx(:,dim)
       end do
       
    end subroutine integrator_yoshida4
@@ -169,12 +163,12 @@ module module_integration
                               & (d(6)+d(7))/2.0_8,(d(7)+d(8))/2.0_8,(d(8)+d(9))/2.0_8,d(9)/2.0_8/)
       real*8,allocatable   :: dx(:,:)
       
-      allocate(dx(size(set),3))
+      allocate(dx(n,3))
       dx = 0 ! the use of dx allows to increase the numerical accuracy significantly
       
       do i = 1,9
          do dim = 1,3
-            dx(:,dim) = dx(:,dim)+c(i)*p(set)%v(dim)*dt
+            dx(:,dim) = dx(:,dim)+c(i)*p%v(dim)*dt
          end do
          call evaluate_accelerations(dx)
          do dim = 1,3
@@ -182,8 +176,8 @@ module module_integration
          end do
       end do
       do dim = 1,3
-         dx(:,dim) = dx(:,dim)+c(10)*p(set)%v(dim)*dt
-         p(set)%x(dim) = p(set)%x(dim)+dx(:,dim)
+         dx(:,dim) = dx(:,dim)+c(10)*p%v(dim)*dt
+         p%x(dim) = p%x(dim)+dx(:,dim)
       end do
       
    end subroutine integrator_yoshida6
@@ -195,9 +189,9 @@ module module_integration
       
       implicit none
       real*8,intent(in),optional :: dx(:,:)
-      integer  :: i,j,k
-      real*8   :: dist(3),rsqr,z,asqr,rsmoothsqr,f(3)
-      real*8,allocatable   :: minrsqr(:)
+      integer                    :: i,j,k
+      real*8                     :: dist(3),rsqr,z,asqr,rsmoothsqr,f(3),h,h3
+      real*8,allocatable         :: minrsqr(:)
       
       ! reset accelerations (could be extended to reset to an external field)
       do k = 1,n-nbackground
@@ -209,6 +203,8 @@ module module_integration
       rsmoothsqr = para%smoothing_radius**2
       allocate(minrsqr(n))
       minrsqr = huge(minrsqr)
+      h = para%box_size/2.0_8
+      h3 = h+para%box_size
       
       if ((ntest==0).and.(nbackground==0)) then
       
@@ -218,6 +214,7 @@ module module_integration
             do j = i+1,n ! due to particle j
                dist = real(p(j)%x-p(i)%x,8)
                if (present(dx)) dist = dist+dx(j,:)-dx(i,:)
+               if (para%box_size>0.0) dist = modulo(dist+h3,para%box_size)-h
                rsqr = max(rsmoothsqr,sum(dist**2))
                minrsqr(i) = min(minrsqr(i),rsqr)
                minrsqr(j) = min(minrsqr(j),rsqr)
@@ -237,14 +234,13 @@ module module_integration
          do k = 1,n-nbackground ! acceleration of particle i
             i = set(k)
             do j = 1,n ! due to particle j
-               if (j.ne.i) then
-                  if (p(j)%m>0.0) then
-                     dist = real(p(j)%x-p(i)%x,8)
-                     if (present(dx)) dist = dist+dx(j,:)-dx(i,:)
-                     rsqr = max(rsmoothsqr,sum(dist**2))
-                     minrsqr(i) = min(minrsqr(i),rsqr)
-                     p(i)%a = p(i)%a+p(j)%m*dist/rsqr**1.5_8
-                  end if
+               if ((j.ne.i).and.(p(j)%m.ne.0.0)) then
+                  dist = real(p(j)%x-p(i)%x,8)
+                  if (present(dx)) dist = dist+dx(j,:)-dx(i,:)
+                  if (para%box_size>0.0) dist = modulo(dist+h3,para%box_size)-h
+                  rsqr = max(rsmoothsqr,sum(dist**2))
+                  minrsqr(i) = min(minrsqr(i),rsqr)
+                  p(i)%a = p(i)%a+p(j)%m*dist/rsqr**1.5_8
                end if
             end do
             p(i)%a = para%G*p(i)%a
@@ -254,7 +250,8 @@ module module_integration
       
       ! new variable time step
       z = huge(z)
-      do i = 1,n
+      do k = 1,n-nbackground
+         i = set(k)
          asqr = sum(p(i)%a**2)+1e-50_8
          z = min(z,minrsqr(i)/asqr)
       end do
@@ -262,7 +259,7 @@ module module_integration
       
       ! count number of acceleration evaluations
       naccelerationevaluations = naccelerationevaluations+1
-   
+      
    end subroutine evaluate_accelerations
    
 end module module_integration
