@@ -1,4 +1,4 @@
-program surfsuite
+program nbodyx
 
    use shared_module_core
    use shared_module_arguments
@@ -10,7 +10,7 @@ program surfsuite
    implicit none
    
    ! start user interface
-   call set_version('1.0')
+   call set_version('1.6')
    call handle_arguments(require_task=.false.)
    call start_output
    
@@ -31,4 +31,4 @@ program surfsuite
    ! finalize output on screen/logfile
    call stop_output
     
-end program surfsuite
+end program nbodyx
