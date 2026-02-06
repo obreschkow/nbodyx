@@ -5,7 +5,7 @@ nbodyx is a simple brute-force code to run direct gravitational N-body simulatio
 and lets the user choose between a range of integrators, including 4th and 6th order integrators for high-accuracy
 simulations. Basic top-hat smoothing is available as an option. The code also allows the definition of a fixed
 background potential, as well as background particles that are fixed or in uniform motion, not subject to acceleration
-by other particles. (See ics_example.txt for details of how such particles are specified.)
+by other particles. See ics_example.txt for details of how such particles are specified and other information.
 
 The code can either be used as a stand-alone tool or called via the 'nbody' package from the R statistical language.
 
