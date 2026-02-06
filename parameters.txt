@@ -1,40 +1,71 @@
+# Example parameter file corresponding to the initial conditions provided in ics_example.txt
+
 # Paths
-inputfile   ics.txt
+inputfile   ics_example.txt
 outputpath  output
 
 # Snapshot format
-# 1 : ascii
-# 2 : binary
-# 3 : single binary stream containing all snapshots
+# There are three different file formats:
+# 1 : ascii files snapshot_000000.txt, snapshot_000001.txt, ...
+# 2 : binary files snapshot_000000.bin, snapshot_000001.bin, ...
+# 3 : single binary stream snapshot_all.bin containing all snapshots
 outputformat 	1
+
+# Output floating point precision
+# This parameter specifies the number of bytes used per floating-point variable in the output snapshot files.
+# It has no bearing on the internal computation accuracy, which is always performed at 8-byte double precision.
+# The default value is 8 (double precision), but 4 may sometimes be preferable to reduce the file size.
+kind			   8
+
+# Output content
+# If include_bg is set to 'yes' (or 'y', 't', 1), all particles are stored in each snapshot;
+# if it is set to 'no' (or 'n', 'f', 0), only foreground particles, i.e. those with non-negative masses in the IC file, are stored.
+include_bg	   n
 
 # Timing
 # Units of time are set by the units of positions an velocities in the ICs file, namely
 # [unit of time in seconds] = [unit of length in meters] / [unit of velocity in m/s]
-# e.g. for length units of of 1AU=1.49598e11m and velocity units of 1km/s=1e3m/s, one unit of time is 1.49598e8s≈4.74yrs
+# e.g. for length units of 1AU=1.49598e11m and velocity units of 1km/s=1e3m/s, one unit of time is 1.49598e8s≈4.74yrs
 tinitial       0
-tfinal         1.7e1
-dtmax       	1.15e0
+tfinal         12.56637
+dtmax       	0.1
 dtmin				0
-dtout				0.1
+dtout				0.2
 
 # Gravitational constant
 # Units of G are set by the units of the ICs file, namely
 # [unit of G in m^3*kg^(-1)*s^(-2)] = [unit of length in meters] * [unit of velocity in m/s]^2 / [unit of mass in kg]
 # e.g. for lengths units of 1AU=1.49598e11m, velocity units of 1km/s=1e3m/s and mass units of 1Msun=1.98847e30kg, a unit of G is
-# 7.523272e-14 m^3*kg^(-1)*s^(-2). In these units the true value of G=6.67430e-11 m^3*kg^(-1)*s^(-2) has the value 887.154
+# 7.523272e-14 m^3*kg^(-1)*s^(-2). In these units the true value of G is about 887.154.
 G        		1
 
-# Smoothing radius (of a uniform top-hat distribution)
+# Smoothing radius (uniform spherical kernel)
 smoothing_radius 0.0
 
 # Accuracy parameter
-eta				0.02
+eta				0.01
 
 # Integration algorithm
-# 'euler' = Euler algorithm (1st order => error of order dt^2)
-# 'leapfrog' = symplectic Leapfrog algorithm (2nd order => error of order dt^3)
-# 'yoshida' or 'yoshida4' = symplectic Yoshida1990 algorithm (4th order => error of order dt^5)
-# 'yoshida6' = symplectic Yoshida1990 algorithm (6th order => error of order dt^7)
-integrator    yoshida
+# 'euler' = Euler algorithm (1st order non-symplectic, only used for demonstration)
+# 'leapfrog' = symplectic Leapfrog algorithm (2nd order symplectic)
+# 'rk4' = Runge-Kutta algorithm (4th order non-symplectic)
+# 'yoshida' or 'yoshida4' = symplectic Yoshida1990 algorithm (4th order symplectic)
+# 'yoshida6' = symplectic Yoshida1990 algorithm (6th order symplectic)
+integrator    leapfrog
 
+# Boundary conditions
+# If the box_size is 0, open boundary conditions are adopted. If box_size>0, the simulation is run in a cubic
+# box of side length box_size with periodic boundary conditions. In this case, the cubic box is contained in the interval
+# [0,box_size) in all three Cartesian coordinates, and all initial positions must be contained in this interval.
+# For periodic boundary conditions, the force between any two particles is always calculated along their shortest separation,
+# which may cross 0-3 boundaries.
+box_size       0
+
+# External acceleration field
+# If acceleration is set to 'yes' (or 'y', 't', 1), all particles other than background particles are subjected to an
+# external acceleration field that can generally depend on position and time. This field is specified in the module
+# module_acceleration.f90. Changing this module requires recompiling. The external acceleration field can
+# depend on up to five parameters that can be specified in this parameter file (p1, p2, p3, p4, p5). If not specified,
+# these parameters are assumed to be 0.
+acceleration	n
+p1					1

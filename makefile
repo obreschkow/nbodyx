@@ -1,14 +1,23 @@
-# Call as make [mode=standard,dev]
+# Call as make [mode=standard,dev] [kind=8,16]
 
-# mode = compilation mode; allowed modes are 'standard' and 'dev'
+# Compiler settings:
+# mode = compilation mode; allowed modes are 'standard' and 'dev'. The latter is a developer mode that runs slower with more checks.
+# kind = 8 or 16; number of bytes used to internally represent particle positions; 16 is only needed for very high accuracy
+#        computations, coupled with a high-order integrator and small time-steps. On standard 64-bit systems, simulations run with
+#        16 bytes take about twice the computation time.
+#        Note: make clean is required when switching between compiler settings (mode and kind).
 
 ifndef mode
    mode = standard
 endif
 
+ifndef kind
+   kind = 8
+endif
+
 # standard compiler flags (depend on the "mode" option)
 ifeq ($(mode),standard)
-   CFLAGS = -Ofast
+   CFLAGS = -Ofast -fdefault-real-8
 else ifeq ($(mode),dev)
    CFLAGS = -O0 -g -fbounds-check -fwhole-file -ffpe-trap=invalid,zero,overflow -Wall -Wunused -Wuninitialized -Wsurprising -Wconversion
 else
@@ -36,15 +45,19 @@ nbodyx.o:   shared_module_core.o \
 				shared_module_arguments.o \
 				shared_module_parameters.o \
 				shared_module_constants.o \
+				module_particle_$(kind).o \
 				module_global.o \
 				module_io.o \
+				module_acceleration.o \
 				module_integration.o
 nbodyx: 	   shared_module_core.o \
 				shared_module_arguments.o \
 				shared_module_parameters.o \
 				shared_module_constants.o \
+				module_particle_$(kind).o \
 				module_global.o \
 				module_io.o \
+				module_acceleration.o \
 				module_integration.o
 
 # ======================================================================
@@ -79,4 +92,4 @@ clean:
 	rm -f *.o *.mod *.MOD
 	rm -f *~ $(PROGRAMS)
 	rm -f fort.*
-	rm -f *.bmp
+	rm -rf output

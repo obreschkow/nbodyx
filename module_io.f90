@@ -16,16 +16,30 @@ subroutine load_parameters
    call get_parameter_value(para%inputfile,'inputfile')
    call get_parameter_value(para%outputpath,'outputpath','')
    call get_parameter_value(para%outputformat,'outputformat',1,min=1,max=3)
+   call get_parameter_value(para%kind,'kind',8,min=4,max=8)
+   call get_parameter_value(para%include_bg,'include_bg',.true.)
    call get_parameter_value(para%tinitial,'tinitial')
    call get_parameter_value(para%tfinal,'tfinal',min=para%tinitial)
    call get_parameter_value(para%dtmax,'dtmax',min=0.0_8)
    call get_parameter_value(para%dtmin,'dtmin',min=0.0_8,max=para%dtmax)
    call get_parameter_value(para%dtout,'dtout',min=0.0_8)
-   call get_parameter_value(para%G,'G',min=0.0_8)
-   call get_parameter_value(para%smoothing_radius,'smoothing_radius',min=0.0_8)
-   call get_parameter_value(para%eta,'eta',min=0.0_8)
-   call get_parameter_value(para%integrator,'integrator','leapfrog',min=5,max=8)
+   call get_parameter_value(para%G,'G',1.0_8,min=0.0_8)
+   call get_parameter_value(para%smoothing_radius,'smoothing_radius',0.0_8,min=0.0_8)
+   call get_parameter_value(para%eta,'eta',0.01_8,min=0.0_8)
+   call get_parameter_value(para%box_size,'box_size',0.0_8,min=0.0_8)
+   call get_parameter_value(para%integrator,'integrator','leapfrog',min=3,max=8)
+   call get_parameter_value(para%acceleration,'acceleration',.true.)
+   call get_parameter_value(para%p(1),'p1',0.0_8)
+   call get_parameter_value(para%p(2),'p2',0.0_8)
+   call get_parameter_value(para%p(3),'p3',0.0_8)
+   call get_parameter_value(para%p(4),'p4',0.0_8)
+   call get_parameter_value(para%p(5),'p5',0.0_8)
    call require_no_parameters_left
+   
+   ! additional argument checks
+   if ((para%kind.ne.4).and.(para%kind.ne.8)) then
+      call error('parameter kind must be 4 or 8')
+   end if
    
    ! turn integrator parameter into lower case and remove tabs
    para%integrator = remove_tabs(lowercase(para%integrator))
@@ -45,20 +59,19 @@ end subroutine load_parameters
 subroutine load_particles
 
    implicit none
-   integer              :: status,i,d
-   real                 :: empty(7)
+   integer              :: io,i,d,j
+   character(128)       :: line
    
    ! determine number of particles
    open(1,file=trim(para%inputfile),action='read',form='formatted')
    n = 0
-   status = 0
-   do while (status==0)
-      read(1,*,IOSTAT=status) empty
-      if (status.ne.0) exit
-      n = n+1
+   do
+      read(1,'(A)',IOSTAT=io) line
+      if (io/=0) exit
+      if (.not.(isempty(line).or.(line(1:1)=='#'))) n = n+1
    end do
    close(1)
-   call out('Number of particles: ',n)
+   call out('Total number of particles: ',n)
    
    ! allocate memory
    if (allocated(p)) deallocate(p)
@@ -66,19 +79,40 @@ subroutine load_particles
    
    ! load particles
    open(1,file=trim(para%inputfile),action='read',form='formatted')
-   do i = 1,n
-      read(1,*) p(i)%m,p(i)%x,p(i)%v
+   i = 0
+   do
+      read(1,'(A)',IOSTAT=io) line
+      if (io/=0) exit
+      if (.not.(isempty(line).or.(line(1:1)=='#'))) then
+         i = i+1
+         read(line,*) p(i)%m,p(i)%x,p(i)%v
+      end if
    end do
    close(1)
    
-   ! pre-process
-   do d = 1,3
-      p%v(d) = p%v(d)
+   ! reset accelerations (do not try to change this loop to avoid compiler optimisation issues)
+   do i = 1,n
+      p(i)%a = 0.0
    end do
-   p%acceleratable = p%m>=0.0
-   p%m = abs(p%m)
+   
+   ! count test and background particles
    ntest = count(p%m==0.0)
-   nbackground = n-count(p%acceleratable)
+   nbackground = count(p%m<0.0)
+   call out('Number of test particles (m=0): ',ntest)
+   call out('Number of background particles: ',nbackground)
+   
+   ! make indices of acceleratable particles (i.e. = normal particles that are accelerated, as opposed to background particles)
+   if (allocated(set)) deallocate(set)
+   allocate(set(n-nbackground))
+   j = 0
+   do i = 1,n
+      if (p(i)%m>=0.0) then
+         j = j+1
+         set(j) = i
+      end if
+   end do
+   if (j.ne.n-nbackground) call error('indexing error')
+   p%m = abs(p%m)
    
 end subroutine load_particles
 
@@ -87,7 +121,7 @@ subroutine save_snapshot(first,last)
    implicit none
    logical,optional,intent(in)   :: first,last
    logical                       :: isfirst,islast
-   integer                       :: i
+   integer                       :: i,k
    character(255)                :: sntxt,fn
    integer,parameter             :: id = 1 ! file id
    
@@ -95,22 +129,64 @@ subroutine save_snapshot(first,last)
       
       ! ascii format
       case (1)
-      write(sntxt,'(A,I0.5,A)') 'snapshot_',snapshot,'.txt'
+      write(sntxt,'(A,I0.6,A)') 'snapshot_',snapshot,'.txt'
       fn = dir(para%outputpath,sntxt)
       open(id,file=trim(fn),action='write',form='formatted',status='replace')
-      write(id,*) n
-      write(id,*) t
-      do i = id,n
-         write(id,*) p(i)%x,p(i)%v
-      end do
+      if (para%include_bg.or.(nbackground==0)) then
+         if (para%kind==4) then
+            write(id,*) int(n,4)
+            write(id,*) real(t,4)
+            do i = 1,n
+               write(id,*) real(p(i)%x,4),real(p(i)%v,4)
+            end do
+         else
+            write(id,*) int(n,8)
+            write(id,*) real(t,8)
+            do i = 1,n
+               write(id,*) real(p(i)%x,8),real(p(i)%v,8)
+            end do
+         end if
+      else
+         if (para%kind==4) then
+            write(id,*) int(n-nbackground,4)
+            write(id,*) real(t,4)
+            do k = 1,n-nbackground
+               i = set(k)
+               write(id,*) real(p(i)%x,4),real(p(i)%v,4)
+            end do
+         else
+            write(id,*) int(n-nbackground,8)
+            write(id,*) real(t,8)
+            do k = 1,n-nbackground
+               i = set(k)
+               write(id,*) real(p(i)%x,8),real(p(i)%v,8)
+            end do
+         end if
+      end if
       close(id)
       
       ! binary format
       case (2)
-      write(sntxt,'(A,I0.5,A)') 'snapshot_',snapshot,'.bin'
+      write(sntxt,'(A,I0.6,A)') 'snapshot_',snapshot,'.bin'
       fn = dir(para%outputpath,sntxt)
       open(id,file=trim(fn),action='write',form='unformatted',status='replace',access='stream')
-      write(id) int(n,8),t,p%x(1),p%x(2),p%x(3),p%v(1),p%v(2),p%v(3)
+      if (para%include_bg.or.(nbackground==0)) then
+         if (para%kind==4) then
+            write(id) int(n,4),real(t,4),real(p%x(1),4),real(p%x(2),4),real(p%x(3),4), &
+            & real(p%v(1),4),real(p%v(2),4),real(p%v(3),4)
+         else
+            write(id) int(n,8),real(t,8),real(p%x(1),8),real(p%x(2),8),real(p%x(3),8), &
+            & real(p%v(1),8),real(p%v(2),8),real(p%v(3),8)
+         end if
+      else
+         if (para%kind==4) then
+            write(id) int(n,4),real(t,4),real(p(set)%x(1),4),real(p(set)%x(2),4),real(p(set)%x(3),4), &
+            & real(p(set)%v(1),4),real(p(set)%v(2),4),real(p(set)%v(3),4)
+         else
+            write(id) int(n,8),real(t,8),real(p(set)%x(1),8),real(p(set)%x(2),8),real(p(set)%x(3),8), &
+            & real(p(set)%v(1),8),real(p(set)%v(2),8),real(p(set)%v(3),8)
+         end if
+      end if
       close(id)
       
       ! single binary stream
@@ -128,9 +204,37 @@ subroutine save_snapshot(first,last)
       if (isfirst) then
          fn = dir(para%outputpath,'snapshot_all.bin')
          open(id,file=trim(fn),action='write',form='unformatted',status='replace',access='stream')
-         write(id) int(n,8)
+         if (para%include_bg.or.(nbackground==0)) then
+            if (para%kind==4) then
+               write(id) int(n,4)
+            else
+               write(id) int(n,8)
+            end if
+         else
+            if (para%kind==4) then
+               write(id) int(n-nbackground,4)
+            else
+               write(id) int(n-nbackground,8)
+            end if
+         end if
       end if
-      write(id) real(t,8),real(p%x(1),8),real(p%x(2),8),real(p%x(3),8),real(p%v(1),8),real(p%v(2),8),real(p%v(3),8)
+      if (para%include_bg.or.(nbackground==0)) then
+         if (para%kind==4) then
+            write(id) real(t,4),real(p%x(1),4),real(p%x(2),4),real(p%x(3),4), &
+            & real(p%v(1),4),real(p%v(2),4),real(p%v(3),4)
+         else
+            write(id) real(t,8),real(p%x(1),8),real(p%x(2),8),real(p%x(3),8), &
+            & real(p%v(1),8),real(p%v(2),8),real(p%v(3),8)
+         end if
+      else
+         if (para%kind==4) then
+            write(id) real(t,4),real(p(set)%x(1),4),real(p(set)%x(2),4),real(p(set)%x(3),4), &
+            & real(p(set)%v(1),4),real(p(set)%v(2),4),real(p(set)%v(3),4)
+         else
+            write(id) real(t,8),real(p(set)%x(1),8),real(p(set)%x(2),8),real(p(set)%x(3),8), &
+            & real(p(set)%v(1),8),real(p(set)%v(2),8),real(p(set)%v(3),8)
+         end if
+      end if
       if (islast) close(id)
       
       ! default case

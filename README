@@ -1,111 +1,79 @@
 OVERVIEW
 ====================================================================================================================
 
-nbodyx is a simple code to perform purely gravitational N-body simulations. It uses a variable block timestep, and
-lets the user choose between a range of integrators.
+nbodyx is a simple brute-force code to run direct gravitational N-body simulations. It uses a variable block timestep
+and lets the user choose between a range of integrators, including 4th and 6th order integrators for high-accuracy
+simulations. Basic top-hat smoothing is available as an option. The code also allows the definition of a fixed
+background potential, as well as background particles that are fixed or in uniform motion, not subject to acceleration
+by other particles. (See ics_example.txt for details of how such particles are specified.)
+
+The code can either be used as a stand-alone tool or called via the 'nbody' package from the R statistical language.
 
 V0.0  02/08/2018: First release
 V1.0  10/08/2021: Integration of shared modules, enhanced interface and documentation
+V1.1  25/08/2021: Optional periodic boundary conditions
+V1.2  08/09/2021: New run-time parameter to exclude background particles in output files
+V1.3  10/09/2021: New run-time parameter to control the floating-point precision of output files
+V1.4  12/01/2022: Fixed bug causing background particles to move incorrectly
+V1.5  08/11/2022: Option to specify a parameterised external acceleration field
+V1.6  12/01/2023: Added examples of Kepler and Hernquist potentials to module_acceleration
+V1.7  06/02/2026: Added Runge-Kutta 4th order integrator
 
 Copyright Danail Obreschkow (danail.obreschkow@icrar.org)
 
 
-QUICK START ON A GENERIC MACHINE
+QUICK START ON A GENERIC LINUX SYSTEM
 ====================================================================================================================
 
-1) Install gfortran (code tested for GNU Fortran 9.3.0).
+1) Install gfortran (which is part of gcc).
+
 2) In a terminal, download nbodyx
    > git clone https://github.com/obreschkow/nbodyx
-3) Got to nbodyx directory:
+   
+3) Go to the new nbodyx directory:
    > cd nbodyx
-4) Modify makefile as needed (e.g. update library paths) and compile the code:
+   
+4) Compile the code: (Depending on your system, the makefile might need to be modified before calling make.)
    > make
-5) Test if the code has properly:
-   > ./nbodyx version
-5) Run test simulation:
-   > ./nbodyx -parameterfile
-6) Edit the file parameters.txt as required
+   
+5) Test if the code has properly compiled:
+   > ./nbodyx -version
+   This should just return the version number of nbodyx.
+   
+6) Run a default test simulation:
+   > ./nbodyx
+   This should produce the new sub-directory 'output'. Check if this directory contains snapshot files, called
+   snapshot_######.txt, and a summary file, called statistics.txt.
+
+7) To run your own simulation, edit the parameter file and ics file directly, or use the 'nbody' package in R as
+   an interface.
+   
+NOTE: By default, nbodyx uses 8-byte double-precision floating-point numbers for all calculations. If very high
+      positional accuracy is needed, you can compile the code with 16-byte floating-point positions using
+      > make kind=16
+      Make sure to run
+      > make clean
+      before changing the kind. Note that some compilers may not support 16-byte floating-point numbers.
 
 
-QUICK START ON ICRAR-HYADES
+QUICK START ON ICRAR'S HYADES CLUSTER
 ====================================================================================================================
 
-# install and compile surfsuite in your home directory
+# install and compile nbodyx in your home directory
 cd ~
-rm -rf surfsuite/ # remove previous surfsuite directory
-git clone https://github.com/obreschkow/surfsuite # install updated version
-cd surfsuite # change to surfsuite directory
-module load gfortran hdf5 # load required modules
-make system=hyades # compile code
-./surfsuite version # check version
-
-# assuming that 'makeall' has been run before by another user, you can, for example,
-# extract particle information for particle number 134 in the SURFS run L210_N1024-Hydro:
-./surfsuite getparticle 134 -parameterset L210_N1024-Hydro6D-hyades
-# NB: it may be necessary to specify the parameter file location using the option "-parameterfile"
-
-# you can also extract halo information for halo number 56 in the L210_N1024 run of SURFS
-./surfsuite gethalo 56 -parameterset L210_N1024-Hydro6D-hyades
-
-# to run a larger task, such as "sortparticles", "makehalos" and "makeall",
-# use the workload manager SLURM, see https://slurm.schedmd.com/pdfs/summary.pdf
+rm -rf nbodyx/ # remove previous nbodyx directory
+git clone https://github.com/obreschkow/nbodyx # install updated version
+cd nbodyx # change to nbodyx directory
+module load gfortran # load required modules
+make # compile code
+./nbodyx -version # check version
 
 
 ARGUMENTS
 ====================================================================================================================
 
-Generally, SurfSuite is called as
-> ./surfsuite task [task_argument] [-option argument] [-option argument] ...
-
-The tasks to choose from are
-
-+ version: returns the version of SurfSuite
-
-+ simulation: returns basic properties of the Gadget simulation
-
-+ sortparticles: sorts particles by ID into files of maximun size of 3.6 GB
-
-+ makehalos: generates binary files, sequentially listing the particles of all halos with
-  species-indices, 3D-positions and 3D-velocities (see file formats below)
-  This uses the halo information from VELOCIraptor.
-
-+ makeall: runs 'sortparticles' and 'makehalos'
-
-+ getparticle #particleID: returns species, position and velocity of the specified particle
-
-+ gethalo #haloID: returns basic properties of the specified halo. Optional arguments:
-  -outputfile: name of a file in which the particles of this halo are saved; if specified the screen output is suppressed
-  -outputformat (default 1): only used if -outputfile given. 1 = hdf5, 2 = ascii, 3 = binary
-  -subhalos (default 0): 0 = do not show particles in subhalos, 1 = include particles in all generations of subhalos
-  -center (default 0): only used if -outputfile given. If set to 1, particle positions are
-   centered to the geometric center (=centre of mass if all species have identical masses)
-   
-+ showhalo #haloID: displays or saves a bitmap-image of the halo. Optional arguments:
-  -outputfile: name of a file in which the image is saved as bitmap (choose *.bmp); if specified the screen output is suppressed
-  -subhalos (default 0): 0 = do not show particles in subhalos, 1 = included particles in all generations of subhalos
-  -at (defaults to the snapshot index specified in the parameter file or via -snapshot): optional index, specifying the snapshot at
-   which the the particles of this halo are to be displayed, allows tracking particles backward and forward in time
-  -mode (default 0): 0 = render particles as points, 1 = show particles as smoothed points, 2 = show small trajectories
-  -npixels (default 800): number of pixels per dimension
-  -sidelength (default 2): sidelength of the displayed images in simulation units
-  -smoothinglength (default 0.2): smoothing length of the displayed images in simulation units; only used if mode=1
-  -lum (default 1): luminosity scaling factor
-  -gamma (default 0.6): gamma correction value for non-linear brightness scale
-  -projection (default 1): specifies the orthogonal projection, 1 = (x,y), 2 = (y,z), 3 = (z,x)
-
-+ trackhalo: tracks the particles of a halo back in time and stores the positions and velocities in a hdf5 file.
-  This task requires the sorted Gadget files (produced by the tasks "sortparticles") to exist for all snapshots in the range specified
-  by the arguments "-from" and "-to"; and it requires the halo files (produced by the task "makehalos") to exist for the reference
-  snapshot, i.e. the snapshot specified via the parameter file or -snapshot.
-  Arguments:
-  -outputfile (required): name of a hdf5-file in which the evolving particles of this halo are saved
-  -from (required): index of first snapshot for tracking
-  -to (required): index of last snapshot for tracking
-  -subhalos (default 0): 0 = do not show particles in subhalos, 1 = included particles in all generations of subhalos
-  -center (default 1): if set to 1, particle positions centered to the geometric center 
-   of the halo at the default snapshot (specified via the parameter file or -snapshot)
-
-Optional arguments used by all routines
+Generally, nbodyx is called as
+> ./nbodyx [-option argument] [-option argument] ...
 
 -parameterfile (default parameters.txt): path+filename of parameter-file
 
@@ -115,126 +83,49 @@ Optional arguments used by all routines
  is taken as the default, if the option "-parameterset" is not provided. If no parameterset is marked as default and if no
  parameterset is selected via "-parameterset", all parameters in parametersets are ignored.
 
--snapshot (default set in parameter-file): overwrites the 'snapshot' number given in parameters.txt to allow
- a quick access to a different snapshot, keeping all the other parameters identical.
-
 -logfile (default none) optional filename of an ascii-file for the screen output
 
 -verbose (default n if logfile given, otherwise y): logical flag (y or n) specifying whether the log should be
  displayed on the screen
 
 
-INPUT FILE FORMATS
+FILE FORMATS
 ====================================================================================================================
 
-Gadget-2 snapshots
+Simulation parameters
+---------------------
+
+Simulation parameters are specified in a parameter file in ascii format. Please see parameters.txt for details.
+
+
+Initial conditions
 ------------------
-Gadget-2 snapshots must be stored in one or multiple binary files, named
-[path_gadget]/[snapshot] OR
-[path_gadget]/[snapshot].0, [path_gadget]/[snapshot].1, ...
-where bracketed names are specified in the parameter file. In particular, [snapshot] is a character string
-specified by the three parameters "snapshot" (=snapsnot number), "snapsnhot_prefix" and "snapshot_fmt",
-where the latter specifies how "snapshot" and "snapshot_prefix" are combined according to Fortran IO rules. E.g.
-- snapshot          186
-- snapshot_ftm      (A,I0.4)
-- snapshot_prefix   sn_
-generates the filename "sn_0186"
 
-The snapshot format must be the standard
-sequential binary format of Gadget-2 (for n particles):
-- Header (256 bytes)
-- Positions (n * 3 * real*4)
-- Velocities (n * 3 * real*4)
-- IDs (n * integer*4 or n * integer*8)
-- [additional properties, which will be ignored]
-
-VELOCIraptor files
-------------------
-When working with VELOCIraptor halos, VELOCIraptor group-files and particles files must be
-provided, for the Gadget-2 snapshots above:
-
-The VELOCIraptor HDF5 groups must be stored in one or several files of name
-[path_velociraptor]/[snapshot][ext_groups] OR
-[path_velociraptor]/[snapshot][ext_groups].0, ...
-
-The VELOCIraptor HDF5 particles must be stored in one or several files of name
-[path_velociraptor]/[snapshot][ext_particles] OR
-[path_velociraptor]/[snapshot][ext_particles].0, ...
+ICs are provided in an ascii file using one line for each particles. Please see ics_example.txt for details.
 
 
-Scale factor file
------------------
-Some task require the scale factors, a = 1/(1+z), corresponding to the snapshots of the simulation. These must be
-given in an ascii-file, whose filename is specified by the parameter 'file_scalefactors'. The format of this file is
-...
+Output data
+-----------
 
+The state (time, positions and velocities) of the simulation is stored at regularly spaced time-steps, spaced by the 
+interval 'dtout' given in the parameter file. Each such time-step is called a snapshot. The 0th snapshot, contains the
+initial conditions and the last snapshot contains the final status at the exact time specified by 'tfinal' in the parameter
+file. The user can choose between three output formats via the parameter 'outputformat' in the parameter file. These formats
+are described below. (If needed, see module_io.f90 for the Fortran code that writes the output files.)
 
-OUTPUT FILE FORMATS
-====================================================================================================================
-
-Sorted Gadget particles
------------------------
-The task 'sortparticles' sorts the Gadget particles into new files, named
-# [path_surfsuite]/[snapshot][ext_sorted] OR
-# [path_surfsuite]/[snapshot][ext_sorted].0, ...
-where bracketed names are specified in the parameter file. These files are binary streams, that
-sequentially list the simulation particles, ordered by their Gadget-ID, in the format
-- id(1),species(1),x(1),y(1),z(1),vx(1),vy(1),vz(1)
-- id(2),species(2),x(2),y(2),z(2),vx(2),vy(2),vz(2)
-...
-where id(i) is an 8-byte integer, species(i) is a 4-byte integer and the other 6 variables are 4-byte reals.
-Thus each particle takes exactly 36 bytes. Each file contains up to 10^8 particles, such that the file sizes
-are limited to about 3.6GB. Whether one or several files are used depends on the number of particles.
-NB: The maximum number of particles per file can be changed programmatically, via a the global parameter
-nparticles_per_sorted_file in the module 'module_global.f95'.
-
-This sorting is just by Gadget particle id. It has nothing to do with VELOCIraptor and can be run without
-available VELOCIraptor data.
-
-Once the particles have been sorted with 'sortparticles', the task 'getparticle' can be used to
-retrieve the particle information.
-
-Particles sorted into haloes
-----------------------------
-If VELOCIraptor files (see above) are available, the task 'makehalos' can be used to sort the Gadget particles
-sequentially halo-after-halo into one or several files, named
-[path_surfsuite]/[snapshot][ext_halos] OR
-[path_surfsuite]/[snapshot][ext_halos].0, ...
-The number of such files is identical to the number of VELOCIraptor group files. Each new file is a binary
-stream that sequentially lists particles in the format
-- id(1),species(1),x(1),y(1),z(1),vx(1),vy(1),vz(1)
-- id(2),species(2),x(2),y(2),z(2),vx(2),vy(2),vz(2)
-...
-with identical variable types to those above.
-
-Simultaneously, the task 'makehalos' also generates a single master file, named
-[path_surfsuite]/[snapshot][ext_halolist]
-with pointers to the individual halos in the files [path_surfsuite]/[snapshot][ext_halos].
-This file is a binary stream of the format
-- idfile(1), position(1), npart(1), npartsub(1), parentid(1), nchildren(1), firstchildid(1), siblingid(1)
-- idfile(2), position(2), npart(2), npartsub(2), parentid(2), nchildren(2), firstchildid(2), siblingid(2)
-...
-All 8 variables are 4-byte integer, thus the full stream has exactly nhalos*32 bytes. The meaning of these 8
-variables is: index of the halo-file, in which to look for the particles; position (in bytes) of the first particle;
-number of particles in the halo without substructure; number of particles in substructure only; halo ID of the parent
-halo, -1 is used for 1st generation halos; number of subhaloes in the generation immediately below; halo index of the
-first subhalo, -1 if no subhaloes; halo index of the next subhalo inside the same parent halo, -1 if none.
-
-Once the particles have been sorted into haloes with 'makehalos', the tasks 'gethalo' and 
-'showhalo' can be used.
-
-Auxiliary analysis path
------------------------
-surfsuite automatically generates the empty directory [path_analysis], specified in the parameter file. This empty
-directory is meant to serve for post-processing purposes by other code that can also access this parameter file,
-such as the tool 'surfanalysis' (not public).
-
-
-PACKAGED FILES
-====================================================================================================================
-
-+ 'README' = this file
-+ 'surfsuite.f95' main program
-+ 'module_xxx.f95' various modules with subroutines
-+ 'parameters.txt' sets paths and file name extensions
-+ 'makefile' contains the compiling instructions for the gfortran compiler.
+1: Each snapshot is saved in an individual ascii file [output]/snapshot_######.txt, where [output] is the output path
+   specified in the parameter file and ###### is the snapshot index. The first line of this file gives the total number of
+   particles, the second line the simulation time and the following lines each contain 6 numbers representing the position
+   and velocity of one particle. Hence this file, has 2+n lines.
+   
+2: Each snapshot is saved in an individual binary stream file [output]/snapshot_######.bin, where [output] is the output path
+   specified in the parameter file and ###### is the snapshot index. This stream has the format
+   n,t,x1,x2,x3,v1,v2,v3, where n (8-byte integer) is the total number of particles, t (8-byte real) is the simulation time,
+   x1/x2/x3/v1/v2/v3 are all vectors of n elements (8-byte reals) giving the position and velocity components. Each such file
+   has exactly 8*(2+6n) bytes.
+   
+3: All snapshots are saved in a single binary stream [output]/snapshot_all.bin with the format
+   n, t,x1,x2,x3,v1,v2,v3, t,x1,x2,x3,v1,v2,v3, t,x1,x2,x3,v1,v2,v3, ...
+   where the variables have the same meaning as above. This file has exactly 8*(1+(1+6n)*nsnapshots) bytes.
+   
+By setting the parameter 'kind' to 4, all the 8-byte output types are truncated to 4-bytes, reducing the file sizes by a factor 2.

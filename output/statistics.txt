@@ -1,6 +1,0 @@
-Number_of_particles                12
-Number_of_test_particles           0
-Number_of_background_particles     0
-Number_of_snapshots                171
-Number_of_interations              175
-Number_of_acceleration_evaluations 526

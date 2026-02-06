@@ -1,0 +1,15 @@
+# This is an example of a file of initial conditions.
+
+# Each data row below corresponds to one particles and has seven entries: a mass, 3 position components and 3 velocity components.
+# Masses can be positive, zero (for test particles) or negative. In the latter case, the particles are interpreted as
+# background particles that have positive mass |m|, but are not accelerated by any other particle or an external potential. Hence,
+# such background particles just move uniformly on a straight line specified by their initial position and velocity. If they have
+# zero velocity they just add a static background potential.
+
+# The particular example below generates two bodies of equal mass, which are in circular orbit around each other if G is set to 1
+# in the parameter file. In this case, a full orbit is completed in a simulation time of 4*pi=12.56637.
+
+# As illustrated in this example file, empty lines and lines starting with '#' are ignored.
+
+1 -1 0 0 0 -0.5 0
+1 1 0 0 0 0.5 0
